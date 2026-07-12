@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>EcoSphere ESG Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 32px;
+  }
+  h1 { font-size: 28px; margin-bottom: 4px; }
+  p.subtitle { color: #94a3b8; margin-bottom: 32px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-bottom: 40px;
+  }
+  .card {
+    background: #1e293b;
+    border-radius: 14px;
+    padding: 20px;
+    border: 1px solid #334155;
+  }
+  .card h3 { font-size: 14px; color: #94a3b8; font-weight: 500; margin-bottom: 8px; }
+  .card .value { font-size: 32px; font-weight: 700; color: #4ade80; }
+  .card .label { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+  .section-title {
+    font-size: 18px;
+    margin: 32px 0 16px;
+    color: #f1f5f9;
+    border-left: 4px solid #4ade80;
+    padding-left: 10px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #1e293b;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  th, td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid #334155;
+    font-size: 14px;
+  }
+  th { color: #94a3b8; font-weight: 600; background: #172033; }
+  tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge.active { background: #14532d; color: #4ade80; }
+  .badge.draft { background: #422006; color: #fbbf24; }
+  .badge.open { background: #450a0a; color: #f87171; }
+
+  .bar-container { background: #334155; border-radius: 8px; height: 10px; width: 100%; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, #4ade80, #22c55e); }
+
+  .loading { color: #64748b; padding: 20px; }
+  .error { color: #f87171; padding: 20px; background: #1e293b; border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<h1>🌍 EcoSphere</h1>
+<p class="subtitle">ESG Management Dashboard</p>
+
+<div id="summary" class="grid">
+  <div class="loading">Loading dashboard...</div>
+</div>
+
+<div class="section-title">Department ESG Scores</div>
+<div id="dept-scores"><div class="loading">Loading...</div></div>
+
+<div class="section-title">Active Challenges</div>
+<div id="challenges-table"><div class="loading">Loading...</div></div>
+
+<div class="section-title">CSR Activities</div>
+<div id="csr-table"><div class="loading">Loading...</div></div>
+
+<div class="section-title">Compliance Issues</div>
+<div id="compliance-table"><div class="loading">Loading...</div></div>
+
+<script>
+// ==== CONFIGURE THESE TWO VALUES ====
+const SUPABASE_URL = "https://ygqfughthyluxzecepoy.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Zc_MTf_0TJ5NlIfpPxsTfg_yl40wS5L";
+// =====================================
+
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+db.from("departments")
+  .select("*")
+  .then(({ data, error }) => {
+    console.log("Departments data:", data);
+    console.log("Departments error:", error);
+  });
+
+function badgeClass(status) {
+  if (!status) return "draft";
+  const s = status.toLowerCase();
+  if (s === "active" || s === "completed" || s === "resolved") return "active";
+  if (s === "open") return "open";
+  return "draft";
+}
+
+async function loadDashboard() {
+  try {
+    const [{ data: depts }, { data: scores }, { data: challenges }, { data: csr }, { data: compliance }, { data: carbon }] = await Promise.all([
+      db.from("departments").select("*"),
+      db.from("department_scores").select("*, departments(name)"),
+      db.from("challenges").select("*"),
+      db.from("csr_activities").select("*"),
+      db.from("compliance_issues").select("*"),
+      db.from("carbon_transactions").select("calculated_co2e")
+    ]);
+
+    // Summary cards
+    const totalCO2e = (carbon || []).reduce((sum, c) => sum + Number(c.calculated_co2e || 0), 0);
+    const avgScore = scores && scores.length
+      ? (scores.reduce((s, d) => s + Number(d.total_score || 0), 0) / scores.length).toFixed(1)
+      : "—";
+    const activeChallenges = (challenges || []).filter(c => c.status === "Active").length;
+    const openIssues = (compliance || []).filter(c => c.status === "Open").length;
+
+    document.getElementById("summary").innerHTML = `
+      <div class="card"><h3>Departments</h3><div class="value">${depts ? depts.length : 0}</div><div class="label">Total tracked</div></div>
+      <div class="card"><h3>Avg ESG Score</h3><div class="value">${avgScore}</div><div class="label">Weighted average</div></div>
+      <div class="card"><h3>Total CO2e</h3><div class="value">${totalCO2e.toFixed(0)}</div><div class="label">kg tracked</div></div>
+      <div class="card"><h3>Active Challenges</h3><div class="value">${activeChallenges}</div><div class="label">In progress</div></div>
+      <div class="card"><h3>Open Compliance Issues</h3><div class="value">${openIssues}</div><div class="label">Needs attention</div></div>
+    `;
+
+    // Department scores with bars
+    if (scores && scores.length) {
+      document.getElementById("dept-scores").innerHTML = `
+        <table>
+          <tr><th>Department</th><th>Environmental</th><th>Social</th><th>Governance</th><th>Total Score</th></tr>
+          ${scores.map(s => `
+            <tr>
+              <td>${s.departments?.name || "—"}</td>
+              <td>${s.environmental_score}</td>
+              <td>${s.social_score}</td>
+              <td>${s.governance_score}</td>
+              <td>
+                <div class="bar-container"><div class="bar-fill" style="width:${Math.min(s.total_score,100)}%"></div></div>
+                ${Number(s.total_score).toFixed(1)}
+              </td>
+            </tr>`).join("")}
+        </table>`;
+    } else {
+      document.getElementById("dept-scores").innerHTML = `<p class="loading">No department scores yet.</p>`;
+    }
+
+    // Challenges table
+    document.getElementById("challenges-table").innerHTML = (challenges && challenges.length) ? `
+      <table>
+        <tr><th>Title</th><th>XP</th><th>Difficulty</th><th>Deadline</th><th>Status</th></tr>
+        ${challenges.map(c => `
+          <tr>
+            <td>${c.title}</td>
+            <td>${c.xp}</td>
+            <td>${c.difficulty || "—"}</td>
+            <td>${c.deadline || "—"}</td>
+            <td><span class="badge ${badgeClass(c.status)}">${c.status}</span></td>
+          </tr>`).join("")}
+      </table>` : `<p class="loading">No challenges yet.</p>`;
+
+    // CSR table
+    document.getElementById("csr-table").innerHTML = (csr && csr.length) ? `
+      <table>
+        <tr><th>Title</th><th>XP</th><th>Evidence Required</th><th>Deadline</th><th>Status</th></tr>
+        ${csr.map(c => `
+          <tr>
+            <td>${c.title}</td>
+            <td>${c.xp}</td>
+            <td>${c.evidence_required ? "Yes" : "No"}</td>
+            <td>${c.deadline || "—"}</td>
+            <td><span class="badge ${badgeClass(c.status)}">${c.status}</span></td>
+          </tr>`).join("")}
+      </table>` : `<p class="loading">No CSR activities yet.</p>`;
+
+    // Compliance table
+    document.getElementById("compliance-table").innerHTML = (compliance && compliance.length) ? `
+      <table>
+        <tr><th>Description</th><th>Severity</th><th>Owner</th><th>Due Date</th><th>Status</th></tr>
+        ${compliance.map(c => `
+          <tr>
+            <td>${c.description}</td>
+            <td>${c.severity}</td>
+            <td>${c.owner}</td>
+            <td>${c.due_date}</td>
+            <td><span class="badge ${badgeClass(c.status)}">${c.status}</span></td>
+          </tr>`).join("")}
+      </table>` : `<p class="loading">No compliance issues yet.</p>`;
+
+  } catch (err) {
+    document.getElementById("summary").innerHTML = `<div class="error">Error loading data: ${err.message}</div>`;
+    console.error(err);
+  }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
