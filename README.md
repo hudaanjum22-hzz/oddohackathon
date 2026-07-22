@@ -1,6 +1,6 @@
 #EcoSphere
 
-ESG (Environmental, Social, Governance) Management Dashboard built for [hackathon name].
+ESG (Environmental, Social, Governance) Management Dashboard built for oddo hackathon.
  Features
 - Department-wise ESG scoring (Environmental, Social, Governance)
 - CO2e emissions tracking
